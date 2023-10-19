@@ -6992,7 +6992,8 @@ impl ::pb_jelly::Message for TestPreserveUnrecognized1 {
         }
       }
     }
-    unrecognized.serialize(&mut self._unrecognized)?;
+    self._unrecognized.reserve(unrecognized.compute_size());
+    unrecognized.serialize(&mut std::io::Cursor::new(&mut self._unrecognized))?;
     Ok(())
   }
 }
@@ -7554,7 +7555,8 @@ impl ::pb_jelly::Message for TestPreserveUnrecognized2 {
         }
       }
     }
-    unrecognized.serialize(&mut self._unrecognized)?;
+    self._unrecognized.reserve(unrecognized.compute_size());
+    unrecognized.serialize(&mut std::io::Cursor::new(&mut self._unrecognized))?;
     Ok(())
   }
 }
@@ -7663,7 +7665,8 @@ impl ::pb_jelly::Message for TestPreserveUnrecognizedEmpty {
         }
       }
     }
-    unrecognized.serialize(&mut self._unrecognized)?;
+    self._unrecognized.reserve(unrecognized.compute_size());
+    unrecognized.serialize(&mut std::io::Cursor::new(&mut self._unrecognized))?;
     Ok(())
   }
 }
@@ -8082,7 +8085,8 @@ impl ::pb_jelly::Message for TestSmallStringPreserveUnrecognized {
         }
       }
     }
-    unrecognized.serialize(&mut self._unrecognized)?;
+    self._unrecognized.reserve(unrecognized.compute_size());
+    unrecognized.serialize(&mut std::io::Cursor::new(&mut self._unrecognized))?;
     Ok(())
   }
 }
