@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::{
@@ -116,11 +117,20 @@ lazy_static! {
 
 /// Keywords in rust which cannot be module names.
 const RESERVED_KEYWORDS: &[&str] = &[
-    "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
-    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "Self", "self", "static", "struct", "super",
-    "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "alignof", "become", "box", "do", "final",
-    "macro", "offsetof", "override", "priv", "proc", "pure", "sizeof", "typeof", "unsized", "virtual", "yield",
+    "Self", "abstract", "alignof", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+    "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "if", "impl", "in", "let", "loop", "macro",
+    "match", "mod", "move", "mut", "offsetof", "override", "priv", "proc", "pub", "pure", "ref", "return", "self",
+    "sizeof", "static", "struct", "super", "trait", "true", "type", "typeof", "unsafe", "unsized", "use", "virtual",
+    "where", "while", "yield",
 ];
+
+fn escape_name(s: &str) -> Cow<'_, str> {
+    if RESERVED_KEYWORDS.contains(&s) {
+        format!("r#{}", s).into()
+    } else {
+        Cow::Borrowed(s)
+    }
+}
 
 type SourceCodeLocation = Vec<i32>;
 #[derive(Default)]
@@ -183,15 +193,15 @@ impl<'a> RustType<'a> {
         // Proto 3 doesn't have configurable default values.
         if !self.is_proto3 {
             if let Some(ref default_value) = self.field.default_value {
-                if self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_STRING) {
+                if self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_STRING) {
                     return format!("Some(\"{}\".into())", default_value);
                 }
 
-                if self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_BYTES) {
+                if self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_BYTES) {
                     return format!("Some(b\"{}\".to_vec())", default_value);
                 }
 
-                if let Some(primitive) = self.field.type_.and_then(get_primitive_type) {
+                if let Some(primitive) = self.field.r#type.and_then(get_primitive_type) {
                     let typ_name = primitive.rust_type;
                     if typ_name.contains("::pb") {
                         return format!("Some({}({}))", typ_name, default_value);
@@ -202,7 +212,7 @@ impl<'a> RustType<'a> {
                     return format!("Some({})", default_value);
                 }
 
-                if self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_ENUM) {
+                if self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_ENUM) {
                     let proto_type = self.ctx.find(self.field.get_type_name());
                     let (crate_, mod_parts) = self.ctx.crate_from_proto_filename(self.proto_file.get_name());
                     let value = format!(
@@ -216,7 +226,7 @@ impl<'a> RustType<'a> {
                 panic!(
                     "Default not supported on field {:?} of type {:?}",
                     self.field.get_name(),
-                    self.field.type_
+                    self.field.r#type
                 );
             }
         }
@@ -226,7 +236,7 @@ impl<'a> RustType<'a> {
 
     fn is_length_delimited(&self) -> bool {
         matches!(
-            self.field.type_,
+            self.field.r#type,
             Some(FieldDescriptorProto_Type::TYPE_MESSAGE)
                 | Some(FieldDescriptorProto_Type::TYPE_STRING)
                 | Some(FieldDescriptorProto_Type::TYPE_BYTES)
@@ -237,7 +247,7 @@ impl<'a> RustType<'a> {
             return "LengthDelimited";
         }
 
-        match self.field.type_ {
+        match self.field.r#type {
             Some(FieldDescriptorProto_Type::TYPE_DOUBLE)
             | Some(FieldDescriptorProto_Type::TYPE_FIXED64)
             | Some(FieldDescriptorProto_Type::TYPE_SFIXED64) => "Fixed64",
@@ -249,7 +259,7 @@ impl<'a> RustType<'a> {
     }
 
     fn is_grpc_slices(&self) -> bool {
-        return self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_BYTES)
+        return self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_BYTES)
             && self
                 .field
                 .get_options()
@@ -259,7 +269,7 @@ impl<'a> RustType<'a> {
     }
 
     fn is_blob(&self) -> bool {
-        return self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_BYTES)
+        return self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_BYTES)
             && matches!(
                 self.field.options,
                 Some(FieldOptions {
@@ -270,7 +280,7 @@ impl<'a> RustType<'a> {
     }
 
     fn is_lazy_bytes(&self) -> bool {
-        return self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_BYTES)
+        return self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_BYTES)
             && self
                 .field
                 .get_options()
@@ -280,7 +290,7 @@ impl<'a> RustType<'a> {
     }
 
     fn is_small_string_optimization(&self) -> bool {
-        return self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_STRING)
+        return self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_STRING)
             && self
                 .field
                 .get_options()
@@ -290,21 +300,13 @@ impl<'a> RustType<'a> {
     }
 
     fn is_boxed(&self) -> bool {
-        return self.field.type_ == Some(FieldDescriptorProto_Type::TYPE_MESSAGE)
+        return self.field.r#type == Some(FieldDescriptorProto_Type::TYPE_MESSAGE)
             && self
                 .field
                 .get_options()
                 .get_extension(extensions::BOX_IT)
                 .unwrap()
                 .unwrap_or(false);
-    }
-
-    fn has_custom_type(&self) -> bool {
-        self.field
-            .get_options()
-            .get_extension(extensions::TYPE)
-            .unwrap()
-            .is_some()
     }
 
     fn custom_type(&self) -> Option<String> {
@@ -315,7 +317,7 @@ impl<'a> RustType<'a> {
         if self.oneof.is_some() {
             return false;
         }
-        if get_primitive_type(self.field.get_type_()).is_some() && self.is_proto3 && !self.field.get_proto3_optional() {
+        if get_primitive_type(self.field.get_type()).is_some() && self.is_proto3 && !self.field.get_proto3_optional() {
             // Primitive types in proto3 are not nullable by default;
             // if missing, they are decoded as 0-value ("" or 0).
             // proto3_optional overrides this and treats those fields like 1-variant oneofs on the wire,
@@ -332,7 +334,7 @@ impl<'a> RustType<'a> {
             return nullable_field;
         }
         return !self.is_proto3
-            || self.field.get_type_() == FieldDescriptorProto_Type::TYPE_MESSAGE
+            || self.field.get_type() == FieldDescriptorProto_Type::TYPE_MESSAGE
             || self.field.get_proto3_optional();
     }
 
@@ -357,7 +359,7 @@ impl<'a> RustType<'a> {
 
     fn set_method(&self) -> (String, String) {
         assert!(!self.is_repeated());
-        match self.field.type_.unwrap() {
+        match self.field.r#type.unwrap() {
             FieldDescriptorProto_Type::TYPE_FLOAT => ("f32".to_string(), "v".to_string()),
             FieldDescriptorProto_Type::TYPE_DOUBLE => ("f64".to_string(), "v".to_string()),
             FieldDescriptorProto_Type::TYPE_INT32 => ("i32".to_string(), "v".to_string()),
@@ -405,9 +407,9 @@ impl<'a> RustType<'a> {
     }
     fn take_method(&self) -> (Option<String>, Option<String>) {
         assert!(!self.is_repeated());
-        let expr = format!("self.{}.take().unwrap_or_default()", self.field.get_name());
+        let expr = format!("self.{}.take().unwrap_or_default()", escape_name(self.field.get_name()));
 
-        match self.field.type_ {
+        match self.field.r#type {
             Some(FieldDescriptorProto_Type::TYPE_STRING) => {
                 if self.is_small_string_optimization() {
                     return (Some(SMALL_STRING_OPT_TYPE.to_string()), Some(expr));
@@ -439,9 +441,9 @@ impl<'a> RustType<'a> {
 
     fn get_method(&self) -> (String, String) {
         assert!(!self.is_repeated());
-        let name = self.field.get_name();
+        let name = escape_name(self.field.get_name());
 
-        match self.field.type_ {
+        match self.field.r#type {
             Some(FieldDescriptorProto_Type::TYPE_FLOAT) => {
                 return ("f32".to_string(), format!("self.{}.unwrap_or(0.)", name));
             },
@@ -503,7 +505,7 @@ impl<'a> RustType<'a> {
                 return (
                     format!("&{}", self.rust_type()),
                     format!(
-                        "self.{}.as_ref(){} .unwrap_or(&{}_default)",
+                        "self.{}.as_ref(){}.unwrap_or(&{}_default)",
                         name,
                         deref,
                         self.rust_type()
@@ -515,7 +517,7 @@ impl<'a> RustType<'a> {
     }
 
     fn rust_type(&self) -> String {
-        let typ = self.field.get_type_();
+        let typ = self.field.get_type();
 
         if let Some(rust_type) = self.custom_type() {
             return rust_type.to_string();
@@ -661,7 +663,7 @@ fn field_iter<'a, 'ctx, F>(
         let oneof_val = typ.oneof_val(&msg_name, &format!("ref {}", var));
         block(
             &mut *ctx,
-            &format!("if let {} = self.{}", oneof_val, oneof.get_name()),
+            &format!("if let {} = self.{}", oneof_val, escape_name(oneof.get_name())),
             |ctx| {
                 if typ.is_empty_oneof_field() {
                     ctx.write(&format!(
@@ -675,21 +677,26 @@ fn field_iter<'a, 'ctx, F>(
                 f(ctx);
             },
         );
-    } else if field.get_type_() == FieldDescriptorProto_Type::TYPE_MESSAGE && !typ.is_nullable() && !typ.is_repeated() {
+    } else if field.get_type() == FieldDescriptorProto_Type::TYPE_MESSAGE && !typ.is_nullable() && !typ.is_repeated() {
         // Always emit messages explicitly marked as non-nullable
         let deref = if typ.is_boxed() { "*" } else { "" };
         block(ctx, "", |ctx| {
-            ctx.write(&format!("let {} = &{}self.{};", var, deref, field.get_name()));
+            ctx.write(&format!(
+                "let {} = &{}self.{};",
+                var,
+                deref,
+                escape_name(field.get_name())
+            ));
             f(ctx);
         });
-    } else if field.get_type_() == FieldDescriptorProto_Type::TYPE_ENUM
+    } else if field.get_type() == FieldDescriptorProto_Type::TYPE_ENUM
         && !typ.is_repeated()
         && enum_err_if_default_or_unknown(ctx.ctx.find(field.get_type_name()).enum_typ())
     {
         // The default value (as considered by proto) doesn't appear in the generated enum and
         // doesn't map to .default(). All of the values that actually get generated need to get
         // encoded.
-        ctx.write(&format!("let {} = &self.{};", var, field.get_name()));
+        ctx.write(&format!("let {} = &self.{};", var, escape_name(field.get_name())));
         f(ctx);
     } else if !typ.is_nullable() && !typ.is_repeated() {
         // For proto3, we remove the Option for primitive fields.
@@ -699,26 +706,30 @@ fn field_iter<'a, 'ctx, F>(
             ctx,
             &format!(
                 "if self.{} != <{} as ::std::default::Default>::default()",
-                field.get_name(),
+                escape_name(field.get_name()),
                 typ.storage_type()
             ),
             |ctx| {
                 if typ.is_boxed() {
-                    ctx.write(&format!("let {} = &*self.{};", var, field.get_name()));
+                    ctx.write(&format!("let {} = &*self.{};", var, escape_name(field.get_name())));
                 } else {
-                    ctx.write(&format!("let {} = &self.{};", var, field.get_name()));
+                    ctx.write(&format!("let {} = &self.{};", var, escape_name(field.get_name())));
                 }
                 f(ctx);
             },
         );
     } else {
         // This iterates through Vec and the Option<> type for optional fieldds
-        block(ctx, format!("for {} in &self.{}", var, field.get_name()), |ctx| {
-            if typ.is_boxed() {
-                ctx.write(format!("let {var} = &**{var};"));
-            }
-            f(ctx)
-        });
+        block(
+            ctx,
+            format!("for {} in &self.{}", var, escape_name(field.get_name())),
+            |ctx| {
+                if typ.is_boxed() {
+                    ctx.write(format!("let {var} = &**{var};"));
+                }
+                f(ctx)
+            },
+        );
     }
 }
 
@@ -1096,21 +1107,10 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
         let ctx = self;
         assert_eq!(ctx.indentation, 0);
         let name = [path, &[msg_type.get_name()]].concat().join("_");
+        let escaped_name = escape_name(&name);
 
         let preserve_unrecognized = msg_type.get_options().get_extension(PRESERVE_UNRECOGNIZED).unwrap() == Some(true);
         let has_extensions = !msg_type.extension_range.is_empty();
-
-        // Adjust some field names
-        // for field in &msg_type.field {
-        //     if RESERVED_KEYWORDS.contains(&field.get_name()) {
-        //         field.get_name().push('_');
-        //     }
-        // }
-        // for oneof in &msg_type.oneof_decl {
-        //     if RESERVED_KEYWORDS.contains(&oneof.get_name()) {
-        //         oneof.get_name().push('_');
-        //     }
-        // }
 
         let mut oneof_fields: HashMap<&str, Vec<&'a FieldDescriptorProto>> = HashMap::new();
         let proto3_optional_synthetic_oneofs: HashSet<i32> = msg_type
@@ -1145,7 +1145,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
         derives.sort_unstable();
 
         ctx.write(format!("#[derive({})]", derives.join(", ")));
-        block(ctx, format!("pub struct {name}"), |ctx| {
+        block(ctx, format!("pub struct {escaped_name}"), |ctx| {
             for (idx, field) in msg_type.field.iter().enumerate() {
                 let ffn = DescriptorProto::default()
                     .descriptor()
@@ -1161,7 +1161,11 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                 if let Some(oneof) = typ.oneof {
                     oneof_fields.entry(oneof.get_name()).or_default().push(field);
                 } else {
-                    ctx.write(format!("pub {}: {},", field.get_name(), typ.storage_type()));
+                    ctx.write(format!(
+                        "pub {}: {},",
+                        escape_name(field.get_name()),
+                        typ.storage_type()
+                    ));
                 }
             }
 
@@ -1169,11 +1173,15 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                 if oneof_nullable(oneof) {
                     ctx.write(format!(
                         "pub {}: ::std::option::Option<{}>,",
-                        oneof.get_name(),
+                        escape_name(oneof.get_name()),
                         oneof_msg_name(&name, oneof)
                     ));
                 } else {
-                    ctx.write(format!("pub {}: {},", oneof.get_name(), oneof_msg_name(&name, oneof)));
+                    ctx.write(format!(
+                        "pub {}: {},",
+                        escape_name(oneof.get_name()),
+                        oneof_msg_name(&name, oneof)
+                    ));
                 }
             }
 
@@ -1198,7 +1206,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
         }
 
         if !ctx.is_proto3 {
-            block(ctx, format!("impl {name}"), |ctx| {
+            block(ctx, format!("impl {escaped_name}"), |ctx| {
                 for field in &msg_type.field {
                     let typ = ctx.rust_type(Some(msg_type), field);
                     if typ.oneof.is_some() {
@@ -1213,7 +1221,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                 typ.rust_type()
                             ),
                             |ctx| {
-                                ctx.write(format!("self.{} = v;", field.get_name()));
+                                ctx.write(format!("self.{} = v;", escape_name(field.get_name())));
                             },
                         );
 
@@ -1225,7 +1233,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                 typ.rust_type()
                             ),
                             |ctx| {
-                                ctx.write(format!("::std::mem::take(&mut self.{})", field.get_name()));
+                                ctx.write(format!("::std::mem::take(&mut self.{})", escape_name(field.get_name())));
                             },
                         );
 
@@ -1233,7 +1241,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                             ctx,
                             format!("pub fn get_{}(&self) -> &[{}]", field.get_name(), typ.rust_type()),
                             |ctx| {
-                                ctx.write(format!("&self.{}", field.get_name()));
+                                ctx.write(format!("&self.{}", escape_name(field.get_name())));
                             },
                         );
                         block(
@@ -1244,12 +1252,12 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                 typ.rust_type()
                             ),
                             |ctx| {
-                                ctx.write(format!("&mut self.{}", field.get_name()));
+                                ctx.write(format!("&mut self.{}", escape_name(field.get_name())));
                             },
                         );
                     } else if typ.is_nullable() {
                         block(ctx, format!("pub fn has_{}(&self) -> bool", field.get_name()), |ctx| {
-                            ctx.write(format!("self.{}.is_some()", field.get_name()));
+                            ctx.write(format!("self.{}.is_some()", escape_name(field.get_name())));
                         });
 
                         let (input_type, input_expr) = typ.set_method();
@@ -1257,7 +1265,11 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                             ctx,
                             format!("pub fn set_{}(&mut self, v: {})", field.get_name(), input_type),
                             |ctx| {
-                                ctx.write(format!("self.{} = Some({});", field.get_name(), input_expr));
+                                ctx.write(format!(
+                                    "self.{} = Some({});",
+                                    escape_name(field.get_name()),
+                                    input_expr
+                                ));
                             },
                         );
 
@@ -1285,19 +1297,19 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
             });
         }
 
-        block(ctx, format!("impl ::std::default::Default for {name}"), |ctx| {
+        block(ctx, format!("impl ::std::default::Default for {escaped_name}"), |ctx| {
             block(ctx, "fn default() -> Self", |ctx| {
-                block(ctx, name.clone(), |ctx| {
+                block(ctx, &escaped_name, |ctx| {
                     for field in &msg_type.field {
                         let typ = ctx.rust_type(Some(msg_type), field);
                         if typ.oneof.is_none() {
-                            ctx.write(format!("{}: {},", field.get_name(), typ.default(&name)))
+                            ctx.write(format!("{}: {},", escape_name(field.get_name()), typ.default(&name)))
                         }
                     }
                     for &oneof in &oneof_decls {
                         let oneof_field = oneof_fields[oneof.get_name()][0];
                         let typ = ctx.rust_type(Some(msg_type), oneof_field);
-                        ctx.write(format!("{}: {},", oneof.get_name(), typ.default(&name)))
+                        ctx.write(format!("{}: {},", escape_name(oneof.get_name()), typ.default(&name)))
                     }
                     if preserve_unrecognized {
                         ctx.write("_unrecognized: Vec::new(),")
@@ -1312,16 +1324,16 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
         block(ctx, "lazy_static!", |ctx| {
             ctx.write(format!(
                 "pub static ref {}_default: {} = {}::default();",
-                name, name, name
+                name, escaped_name, escaped_name
             ));
         });
 
-        block(ctx, format!("impl ::pb_jelly::Message for {name}"), |ctx| {
+        block(ctx, format!("impl ::pb_jelly::Message for {escaped_name}"), |ctx| {
             block(
                 ctx,
                 "fn descriptor(&self) -> ::std::option::Option<::pb_jelly::MessageDescriptor>",
                 |ctx| {
-                    let name = format!("{}_{}", path.join("_"), msg_type.get_name());
+                    let name = [path, &[msg_type.get_name()]].concat().join("_");
                     let full_name = if let Some(ref package) = ctx.proto_file.package {
                         format!("{package}.{name}")
                     } else {
@@ -1401,16 +1413,20 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                             ctx.write(format!("{}_size += l;", field.get_name()));
                         });
                         if typ.should_serialize_packed() {
-                            block(ctx, format!("if !self.{}.is_empty()", field.get_name()), |ctx| {
-                                ctx.write(format!(
-                                    "size += ::pb_jelly::wire_format::serialized_length({});",
-                                    field.get_number()
-                                ));
-                                ctx.write(format!(
-                                    "size += ::pb_jelly::varint::serialized_length({}_size as u64);",
-                                    field.get_name()
-                                ));
-                            });
+                            block(
+                                ctx,
+                                format!("if !self.{}.is_empty()", escape_name(field.get_name())),
+                                |ctx| {
+                                    ctx.write(format!(
+                                        "size += ::pb_jelly::wire_format::serialized_length({});",
+                                        field.get_number()
+                                    ));
+                                    ctx.write(format!(
+                                        "size += ::pb_jelly::varint::serialized_length({}_size as u64);",
+                                        field.get_name()
+                                    ));
+                                },
+                            );
                         }
                         ctx.write(format!("size += {}_size;", field.get_name()));
                     }
@@ -1507,12 +1523,12 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                     let mut err_if_default_field_names = IndexSet::new();
                     for field in &msg_type.field {
                         let typ = ctx.rust_type(Some(msg_type), field);
-                        if field.get_type_() == FieldDescriptorProto_Type::TYPE_ENUM && !typ.is_repeated() {
+                        if field.get_type() == FieldDescriptorProto_Type::TYPE_ENUM && !typ.is_repeated() {
                             let enum_type = ctx.ctx.find(field.get_type_name()).enum_typ();
                             if enum_err_if_default_or_unknown(enum_type) && typ.oneof.is_none() {
                                 ctx.write(format!(
                                     "let mut {}: ::std::option::Option<{}> = None;",
-                                    field.get_name(),
+                                    escape_name(field.get_name()),
                                     typ.rust_type()
                                 ));
                                 err_if_default_field_names.insert(field.get_name());
@@ -1544,7 +1560,10 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                                                 typ.rust_type()
                                                             ));
                                                             ctx.write("::pb_jelly::Message::deserialize(&mut val, &mut vals)?;");
-                                                            ctx.write(format!("self.{}.push(val);", field.get_name()));
+                                                            ctx.write(format!(
+                                                                "self.{}.push(val);",
+                                                                escape_name(field.get_name())
+                                                            ));
                                                         });
                                                     },
                                                 );
@@ -1555,7 +1574,10 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                                         typ.rust_type()
                                                     ));
                                                     ctx.write("::pb_jelly::Message::deserialize(&mut val, buf)?;");
-                                                    ctx.write(format!("self.{}.push(val);", field.get_name()));
+                                                    ctx.write(format!(
+                                                        "self.{}.push(val);",
+                                                        escape_name(field.get_name())
+                                                    ));
                                                 });
                                             });
                                         } else {
@@ -1588,7 +1610,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                                     if oneof_nullable(oneof) {
                                                         ctx.write(format!(
                                                             "self.{} = {};",
-                                                            oneof.get_name(),
+                                                            escape_name(oneof.get_name()),
                                                             typ.oneof_val(&name, field_val)
                                                         ));
                                                     } else {
@@ -1601,13 +1623,21 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                                 } else if typ.is_nullable() {
                                                     ctx.write(format!(
                                                         "self.{} = Some({});",
-                                                        field.get_name(),
+                                                        escape_name(field.get_name()),
                                                         field_val
                                                     ));
                                                 } else if err_if_default_field_names.contains(&field.get_name()) {
-                                                    ctx.write(format!("{} = Some({});", field.get_name(), field_val));
+                                                    ctx.write(format!(
+                                                        "{} = Some({});",
+                                                        escape_name(field.get_name()),
+                                                        field_val
+                                                    ));
                                                 } else {
-                                                    ctx.write(format!("self.{} = {};", field.get_name(), field_val));
+                                                    ctx.write(format!(
+                                                        "self.{} = {};",
+                                                        escape_name(field.get_name()),
+                                                        field_val
+                                                    ));
                                                 }
                                             }
                                         }
@@ -1637,15 +1667,16 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                     for &oneof in &oneof_decls {
                         if !oneof_nullable(oneof) {
                             block(ctx, format!("match oneof_{}", oneof.get_name()), |ctx| {
-                                ctx.write(format!("Some(v) => self.{} = v,", oneof.get_name()));
+                                ctx.write(format!("Some(v) => self.{} = v,", escape_name(oneof.get_name())));
                                 ctx.write(format!("None => return Err(::std::io::Error::new(::std::io::ErrorKind::InvalidInput, \"missing value for non-nullable oneof '{}' while parsing message {}.{}\")),", oneof.get_name(), ctx.proto_file.get_package(), msg_type.get_name()))
                             });
                         }
                     }
 
                     for field_name in err_if_default_field_names {
-                        block(ctx, format!("match {field_name}"), |ctx| {
-                            ctx.write(format!("Some(v) => self.{} = v,", field_name));
+                        let escaped_field_name = escape_name(field_name);
+                        block(ctx, format!("match {escaped_field_name}"), |ctx| {
+                            ctx.write(format!("Some(v) => self.{escaped_field_name} = v,"));
                             ctx.write(format!("None => return Err(::std::io::Error::new(::std::io::ErrorKind::InvalidInput, \"err_if_default_or_unknown '{}' had no value while parsing message {}.{}\")),", field_name, ctx.proto_file.get_package(), msg_type.get_name()));
                         });
                     }
@@ -1694,14 +1725,14 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                     if oneof_fields[oneof.get_name()].len() > 1 || oneof_nullable(oneof) {
                                         // Only useful to generate this logic if there is more than one
                                         // possible value for this oneof.
-                                        block(ctx, format!("match self.{}", oneof.get_name()), |ctx| {
+                                        block(ctx, format!("match self.{}", escape_name(oneof.get_name())), |ctx| {
                                             ctx.write(format!("{} => (),", typ.oneof_val(&name, "_")));
                                             block_with(ctx, "_ =>", " {", "},", |ctx| {
                                                 // If this oneof is not currently set to this variant, we explicitly
                                                 // set it to this variant.
                                                 ctx.write(format!(
                                                     "self.{} = {};",
-                                                    oneof.get_name(),
+                                                    escape_name(oneof.get_name()),
                                                     typ.oneof_val(&name, "::std::default::Default::default()"),
                                                 ));
                                             });
@@ -1715,7 +1746,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                             format!(
                                                 "if let {} = self.{}",
                                                 typ.oneof_val(&name, "ref mut val"),
-                                                oneof.get_name()
+                                                escape_name(oneof.get_name())
                                             ),
                                             |ctx| {
                                                 if typ.is_boxed() {
@@ -1729,21 +1760,21 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
                                 } else if typ.is_repeated() {
                                     // TODO: Would be nice to support this, but some more thought would
                                     // need to be put into what the API for it looks like.
-                                    // self.write(format!("::pb_jelly::reflection::FieldMut::Repeated(&mut self.{})", field.get_name()));
+                                    // self.write(format!("::pb_jelly::reflection::FieldMut::Repeated(&mut self.{})", escape_name(field.get_name())));
                                     ctx.write("unimplemented!(\"Repeated fields are not currently supported.\")");
                                 } else if typ.is_nullable() && typ.is_boxed() {
-                                    ctx.write(format!("::pb_jelly::reflection::FieldMut::Value(self.{}.get_or_insert_with(::std::default::Default::default).as_mut())", field.get_name()));
+                                    ctx.write(format!("::pb_jelly::reflection::FieldMut::Value(self.{}.get_or_insert_with(::std::default::Default::default).as_mut())", escape_name(field.get_name())));
                                 } else if typ.is_boxed() {
                                     ctx.write(format!(
                                         "::pb_jelly::reflection::FieldMut::Value(self.{}.as_mut())",
-                                        field.get_name()
+                                        escape_name(field.get_name())
                                     ));
                                 } else if typ.is_nullable() {
-                                    ctx.write(format!("::pb_jelly::reflection::FieldMut::Value(self.{}.get_or_insert_with(::std::default::Default::default))", field.get_name()));
+                                    ctx.write(format!("::pb_jelly::reflection::FieldMut::Value(self.{}.get_or_insert_with(::std::default::Default::default))", escape_name(field.get_name())));
                                 } else {
                                     ctx.write(format!(
                                         "::pb_jelly::reflection::FieldMut::Value(&mut self.{})",
-                                        field.get_name()
+                                        escape_name(field.get_name())
                                     ));
                                 }
                             });
@@ -1773,7 +1804,9 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
         let (crate_, mod_parts) = self.ctx.crate_from_proto_filename(self.proto_file.get_name());
 
         self.write_comments(self.source_code_info_by_scl.get(scl).copied());
-        let name = [path, &[&extension_field.get_name().to_ascii_uppercase()]].concat().join("_");
+        let name = [path, &[&extension_field.get_name().to_ascii_uppercase()]]
+            .concat()
+            .join("_");
         let rust_type = self.rust_type(None, extension_field);
         let extendee = self.ctx.find(extension_field.get_extendee());
         let kind = if extension_field.get_label() == FieldDescriptorProto_Label::LABEL_REPEATED {
@@ -1783,7 +1816,7 @@ impl<'a, 'ctx> CodeWriter<'a, 'ctx> {
         };
 
         self.write(format!(
-            "pub const {}: ::pb_jelly::extensions::{}<{}, {}> = 
+            "pub const {}: ::pb_jelly::extensions::{}<{}, {}> =
     ::pb_jelly::extensions::{}::new(
         {},
         ::pb_jelly::wire_format::Type::{},
@@ -1982,11 +2015,12 @@ impl<'a> ProtoType<'a> {
                 .eq(other_mod_parts.iter().map(|s| s.as_ref()))
         {
             // In the same Rust binary, directly use typename
-            return self.path.join("_") + "_" + &self.typ.get_name();
+            return [&self.path[..], &[self.typ.get_name()]].concat().join("_");
         }
 
         let mut mod_parts = self.mod_parts.clone();
-        mod_parts.push(self.path.join("_") + "_" + &self.typ.get_name());
+        mod_parts.push([&self.path[..], &[self.typ.get_name()]].concat().join("_"));
+        mod_parts.iter_mut().for_each(|s| *s = escape_name(s).to_string());
         if other_crate != self.crate_ {
             // Different crate. Insert crate name in fully qualified module.
             mod_parts.insert(0, "::".to_owned() + &self.crate_);
@@ -2082,7 +2116,7 @@ impl<'a> Context<'a> {
         }
 
         for field in msg_type.get_field() {
-            let typ = field.get_type_();
+            let typ = field.get_type();
             let rust_type = RustType::new(self, proto_file, Some(msg_type), field);
             if let Some(custom_type) = rust_type.custom_type() {
                 self.extra_crates
@@ -2268,7 +2302,7 @@ impl<'a> Context<'a> {
         visited.insert(pt.proto_name());
         let mut any_field_boxed = false;
         for field in &pt.msg_typ().field {
-            if field.get_type_() == FieldDescriptorProto_Type::TYPE_MESSAGE
+            if field.get_type() == FieldDescriptorProto_Type::TYPE_MESSAGE
                 && field.get_label() != FieldDescriptorProto_Label::LABEL_REPEATED
             {
                 let mut need_box = false;
@@ -2317,7 +2351,7 @@ impl<'a> Context<'a> {
                     + &sub_mod_tree
                         .0
                         .keys()
-                        .map(|k| format!("pub mod {};\n", k))
+                        .map(|k| format!("pub mod {};\n", escape_name(k)))
                         .collect::<String>();
                 result.push((filename, content));
 
@@ -2332,7 +2366,7 @@ impl<'a> Context<'a> {
 
             let crate_mod_tree = &mod_tree.0[crate_name];
             for (mod_name, child_mod_tree) in crate_mod_tree.0.iter() {
-                writeln!(&mut librs, "pub mod {};", mod_name).unwrap();
+                writeln!(&mut librs, "pub mod {};", escape_name(mod_name)).unwrap();
 
                 for res in mod_tree_dfs(&format!("{}/src/{}", crate_name, mod_name), child_mod_tree) {
                     result.push(res);
@@ -2461,24 +2495,15 @@ impl<'a> Context<'a> {
     fn crate_from_proto_filename(&self, proto_filename: &str) -> (String, Vec<String>) {
         let filename = proto_filename.replace(&self.prefix_to_clear, "").replace(".proto", "");
 
-        let mod_parts_unsanitized = filename.split("/");
-        let mod_parts: Vec<String> = mod_parts_unsanitized
-            .map(|mod_part| {
-                if RESERVED_KEYWORDS.contains(&mod_part) {
-                    format!("{}_", mod_part)
-                } else {
-                    mod_part.to_string()
-                }
-            })
-            .collect();
+        let mod_parts: Vec<_> = filename.split("/").collect();
 
         if self.crate_per_dir {
             let crate_name = format!("proto_{}", mod_parts[..mod_parts.len() - 1].join("_"));
-            return (crate_name, vec![mod_parts[mod_parts.len() - 1].clone()]);
+            return (crate_name, vec![mod_parts[mod_parts.len() - 1].to_string()]);
         }
 
         let crate_name = format!("proto_{}", mod_parts[0]);
-        (crate_name, mod_parts[1..].to_vec())
+        (crate_name, mod_parts[1..].iter().map(|s| s.to_string()).collect())
     }
 }
 
@@ -2578,11 +2603,10 @@ fn generate_single_crate(
         processed_files.insert(proto_file_name[..proto_file_name.len() - 6].to_owned()); // Strip the .proto
 
         let (crate_name, mod_parts) = ctx.crate_from_proto_filename(proto_file_name);
-        let parent_mods = &mod_parts[..mod_parts.len() - 1];
-        let mod_name = if mod_parts.is_empty() {
-            &crate_name
+        let (parent_mods, mod_name) = if let Some((mod_name, parent_mods)) = mod_parts.split_last() {
+            (parent_mods, mod_name)
         } else {
-            &mod_parts[mod_parts.len() - 1]
+            (&[][..], &crate_name)
         };
 
         let mut add_mod = |writer: &mut CodeWriter| {

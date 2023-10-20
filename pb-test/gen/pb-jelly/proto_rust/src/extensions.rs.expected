@@ -1,0 +1,78 @@
+// @generated, do not edit
+pub const BOX_IT: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FieldOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50000,
+        ::pb_jelly::wire_format::Type::Varint,
+        "box_it",
+    );
+
+pub const GRPC_SLICES: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FieldOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50003,
+        ::pb_jelly::wire_format::Type::Varint,
+        "grpc_slices",
+    );
+
+pub const TYPE: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FieldOptions, ::std::string::String> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50004,
+        ::pb_jelly::wire_format::Type::LengthDelimited,
+        "type",
+    );
+
+pub const ZERO_COPY: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FieldOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50007,
+        ::pb_jelly::wire_format::Type::Varint,
+        "zero_copy",
+    );
+
+pub const SSO: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FieldOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50009,
+        ::pb_jelly::wire_format::Type::Varint,
+        "sso",
+    );
+
+pub const NULLABLE_FIELD: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FieldOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50008,
+        ::pb_jelly::wire_format::Type::Varint,
+        "nullable_field",
+    );
+
+pub const ERR_IF_DEFAULT_OR_UNKNOWN: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::EnumOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50002,
+        ::pb_jelly::wire_format::Type::Varint,
+        "err_if_default_or_unknown",
+    );
+
+pub const CLOSED_ENUM: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::EnumOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50008,
+        ::pb_jelly::wire_format::Type::Varint,
+        "closed_enum",
+    );
+
+pub const PRESERVE_UNRECOGNIZED: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::MessageOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50006,
+        ::pb_jelly::wire_format::Type::Varint,
+        "preserve_unrecognized",
+    );
+
+pub const NULLABLE: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::OneofOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50001,
+        ::pb_jelly::wire_format::Type::Varint,
+        "nullable",
+    );
+
+pub const SERDE_DERIVE: ::pb_jelly::extensions::SingularExtension<::proto_google::protobuf::descriptor::FileOptions, bool> =
+    ::pb_jelly::extensions::SingularExtension::new(
+        50005,
+        ::pb_jelly::wire_format::Type::Varint,
+        "serde_derive",
+    );
+
